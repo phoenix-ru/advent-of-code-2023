@@ -6,7 +6,8 @@ main!();
 
 fn solve(input: &str) -> usize {
     let gates = parse_input(input);
-    cycle(gates, 10000000)
+    let (lows, highs) = cycle(gates, 1000, None);
+    lows * highs
 }
 
 #[cfg(test)]

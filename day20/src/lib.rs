@@ -34,6 +34,12 @@ pub struct Broadcaster {
     pub outs: [u8; MAX_OUTS],
 }
 
+#[derive(Debug)]
+pub struct Tracking {
+    pub track: [u8; 13],
+    pub reached_in: Vec<usize>,
+}
+
 pub fn parse_input(input: &str) -> Vec<GateKind> {
     // Build result to take as little space as possible
     let mut gates = Vec::new();
@@ -58,8 +64,13 @@ pub fn parse_input(input: &str) -> Vec<GateKind> {
         names_map.insert(name, new_idx as u8);
 
         let gate = match typ {
-            "b" if source.starts_with("broadcaster") => GateKind::Broadcaster(Broadcaster { outs: [0; 7] }),
-            "%" => GateKind::FlipFlop(FlipFlop { state: false, outs: [0; 7] }),
+            "b" if source.starts_with("broadcaster") => {
+                GateKind::Broadcaster(Broadcaster { outs: [0; 7] })
+            }
+            "%" => GateKind::FlipFlop(FlipFlop {
+                state: false,
+                outs: [0; 7],
+            }),
             "&" => GateKind::Conjunction(Conjunction {
                 state: 0,
                 ins: [0; 13],
@@ -105,7 +116,9 @@ pub fn parse_input(input: &str) -> Vec<GateKind> {
                 .expect("Should be allocated already");
 
             *put_at = match typ {
-                "b" if source.starts_with("broadcaster") => GateKind::Broadcaster(Broadcaster { outs }),
+                "b" if source.starts_with("broadcaster") => {
+                    GateKind::Broadcaster(Broadcaster { outs })
+                }
                 "%" => GateKind::FlipFlop(FlipFlop { state: false, outs }),
                 "&" => GateKind::Conjunction(Conjunction {
                     state: 0,
@@ -127,7 +140,9 @@ pub fn parse_input(input: &str) -> Vec<GateKind> {
 
                 for (inner_gate_idx, gate) in gates.iter().enumerate() {
                     match gate {
-                        GateKind::FlipFlop(FlipFlop { outs, .. }) | GateKind::Conjunction(Conjunction { outs, .. }) | GateKind::Broadcaster(Broadcaster { outs }) => {
+                        GateKind::FlipFlop(FlipFlop { outs, .. })
+                        | GateKind::Conjunction(Conjunction { outs, .. })
+                        | GateKind::Broadcaster(Broadcaster { outs }) => {
                             for out in outs.iter() {
                                 if *out as usize == gate_idx {
                                     ins[next_in] = inner_gate_idx as u8;
@@ -139,7 +154,9 @@ pub fn parse_input(input: &str) -> Vec<GateKind> {
                     }
                 }
 
-                let GateKind::Conjunction(conj) = &mut gates[gate_idx] else { unreachable!() };
+                let GateKind::Conjunction(conj) = &mut gates[gate_idx] else {
+                    unreachable!()
+                };
                 conj.ins = ins;
             }
 
@@ -152,17 +169,27 @@ pub fn parse_input(input: &str) -> Vec<GateKind> {
     gates
 }
 
-pub fn cycle(mut gates: Vec<GateKind>, iterations: u32) -> usize {
+pub fn cycle(
+    mut gates: Vec<GateKind>,
+    iterations: usize,
+    mut tracking: Option<&mut Tracking>,
+) -> (usize, usize) {
     let mut lows = 0;
     let mut highs = 0;
-    
+
     let mut queue = VecDeque::<(usize, usize, bool)>::new();
 
     // Find broadcaster index
-    let broadcaster_idx = gates.iter().position(|gate| matches!(gate, GateKind::Broadcaster(_))).expect("Should have broadcaster") as usize;
+    let broadcaster_idx = gates
+        .iter()
+        .position(|gate| matches!(gate, GateKind::Broadcaster(_)))
+        .expect("Should have broadcaster") as usize;
+
+    // Remap tracking
+    let mut track = tracking.as_ref().map(|tr| tr.track.map(|n| n as usize));
 
     // Cycle
-    for _ in 0..iterations {
+    for i in 0..iterations {
         // Push button
         queue.push_back((0, broadcaster_idx, false));
 
@@ -172,6 +199,29 @@ pub fn cycle(mut gates: Vec<GateKind>, iterations: u32) -> usize {
                 highs += 1;
             } else {
                 lows += 1;
+            }
+
+            // Tracking for part2
+            if pulse_is_hi {
+                if let Some(ref mut to_track) = track {
+                    let mut all_zeroes = true;
+                    for tracked in to_track.iter_mut() {
+                        if *tracked != 0 && *tracked == pulse_from {
+                            if let Some(ref mut tracking) = tracking {
+                                tracking.reached_in.push(i + 1);
+                            }
+                            *tracked = 0;
+                        }
+
+                        if *tracked != 0 {
+                            all_zeroes = false;
+                        }
+                    }
+
+                    if all_zeroes {
+                        return (lows, highs);
+                    }
+                }
             }
 
             macro_rules! push_outs {
@@ -201,7 +251,9 @@ pub fn cycle(mut gates: Vec<GateKind>, iterations: u32) -> usize {
 
                 Some(GateKind::Conjunction(conj)) => {
                     // Find and set the needed input bit
-                    if let Some(bit_idx) = conj.ins.iter().position(|input| *input == pulse_from as u8) {
+                    if let Some(bit_idx) =
+                        conj.ins.iter().position(|input| *input == pulse_from as u8)
+                    {
                         // Set to 0
                         if pulse_is_hi {
                             conj.state |= 1 << bit_idx;
@@ -223,5 +275,5 @@ pub fn cycle(mut gates: Vec<GateKind>, iterations: u32) -> usize {
         }
     }
 
-    dbg!(lows) * dbg!(highs)
+    (lows, highs)
 }

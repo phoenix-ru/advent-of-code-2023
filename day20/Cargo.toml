@@ -7,4 +7,5 @@ edition = "2021"
 
 [dependencies]
 common.workspace = true
+num = "0.4.1"
 rustc-hash = "1.1.0"
